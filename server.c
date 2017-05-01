@@ -17,7 +17,8 @@ int main() {
     }
 
     for(i=0;i<3;i++)
-        printf("%d",fileData[i]);
+        printf("%d\n",fileData[i]);
+
     numWorkers = fileData[0];
     numConnections = fileData[1];
     portNumber = fileData[2];
@@ -45,17 +46,36 @@ int main() {
     }
 
     /*workers creation*/
-    for(int j=0;j<numWorkers;j++){
-        fork();
-//        execlp();
+//    for(int j=0;j<numWorkers;j++){
+//        fork();
+////        execlp();
+//    }
+    int newfd;
+    int cli_len = sizeof(cli);
+    int nbytes;
+    char buffer[512];
+
+
+
+    while(1){
+        int newfd; /* returned by accept() */
+        int cli_len = sizeof(cli);
+        //newfd= (int*)malloc(sizeof(int));
+        newfd = accept(fd, (struct sockaddr*) &cli, &cli_len);
+        if(newfd < 0) {
+            perror("accept"); exit(1);
+        }
+
+        if((nbytes = read(newfd, buffer, sizeof(buffer))) < 0) {
+            perror("read error");
+            exit(1);
+        }
+
+
+
+        printf("%s ok\n",buffer);
+        close(newfd);
     }
-
-
-
-
-
-
-
 
 }
 
