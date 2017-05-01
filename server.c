@@ -1,11 +1,15 @@
 
 #include "conf.h"
+#define KEY 500
+void (*  old_handler)(int);
+void handler(int signum);
+int fd = 0;
 
 int main() {
     int numWorkers,numConnections,portNumber;
-    int fd;
+
     struct sockaddr_in srv;
-    struct sockaddr_in cli;
+//    struct sockaddr_in cli;
     /*read from file*/
     int fileData[3];
     int i=0;
@@ -22,10 +26,10 @@ int main() {
     numWorkers = fileData[0];
     numConnections = fileData[1];
     portNumber = fileData[2];
+    int *workersPIDs = (int *)malloc(numWorkers*sizeof(int));
 
+    /*socket creation*/
 
-
-/* socket descriptor */
     if((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket");
         exit(1);
@@ -44,39 +48,188 @@ int main() {
         perror("listen");
         exit(1);
     }
+    printf("after binding the socket with fd %d\n",fd);
 
     /*workers creation*/
-//    for(int j=0;j<numWorkers;j++){
-//        fork();
-////        execlp();
-//    }
-    int newfd;
-    int cli_len = sizeof(cli);
-    int nbytes;
-    char buffer[512];
+    for(int j=0;j<numWorkers;j++){
+        int pid = fork();
 
 
 
-    while(1){
-        int newfd; /* returned by accept() */
-        int cli_len = sizeof(cli);
-        //newfd= (int*)malloc(sizeof(int));
-        newfd = accept(fd, (struct sockaddr*) &cli, &cli_len);
-        if(newfd < 0) {
-            perror("accept"); exit(1);
+
+        if(!pid){//child
+            old_handler = signal (SIGINT, handler);
+//            printf("request Accepted by child %d\n",getpid());
+            while(1);
+
+
+
+//            printf("child %d\n",getpid());
+//            int qid = open_MQ(KEY);
+////            printf("qid child %d\n",qid);
+//            struct msgbuf msg;
+//            strcpy(msg.a,"je");
+//            printf("fd %d\n",fd);
+//            while(1){
+//                receive_msg_MQ(qid,&msg,getpid());
+//                msgrcv(qid,&msg,sizeof(msg)-sizeof(long),getpid(),0);
+//                int newfd; /* returned by accept() */
+//                int cli_len = sizeof(cli);
+//                //newfd= (int*)malloc(sizeof(int));
+////                printf("fd %d\n",fd);
+//                newfd = accept(fd, (struct sockaddr*) &cli, &cli_len);
+//                if(newfd < 0) {
+//                    perror("accept"); exit(1);
+//                }
+//                printf("the message is %s in child %d\n",msg.a, getpid());
+//            }
+
+
+
+            return 0;
+
+        }
+        else{ //parent
+//            printf("parent %d with child %d\n",getpid(),pid);
+            workersPIDs[j] = pid;
         }
 
-        if((nbytes = read(newfd, buffer, sizeof(buffer))) < 0) {
-            perror("read error");
+//        execlp();
+    }
+//    for(int k=0;k<numWorkers;k++){
+//        printf("worker #%d is %d\n",k,workersPIDs[k]);
+//    }
+    printf("after forking \n");
+
+    /*MQ*/
+
+
+//    int qid = open_MQ(KEY);
+//    printf("qid parent %d\n",qid);
+//    struct msgbuf p;
+//    strcpy(p.a,"ahln");
+//    int workerIndex = rand() % 10;
+//    long workerPID = workersPIDs[workerIndex];
+//    printf("we send message to child %ld\n",workerPID);
+//    p.type = workerPID;
+//    p.pid = getpid();
+
+//    send_msg_MQ(qid,&p);
+//    if(msgsnd(qid,&p,sizeof(p)-sizeof(long),0)<0)
+//    {
+//        perror("error in sending to MQ");
+//        exit(1);
+//    }
+//    printf("message is sent to worker\n");
+
+
+    /* socket descriptor */
+
+
+
+    /*check if there's data to read from the general socket*/
+    while(1){
+
+        fd_set mainReadfd;
+        FD_ZERO(&mainReadfd);
+        FD_SET(fd,&mainReadfd);
+        if(select(fd+1,&mainReadfd,0,0,0)<0){
+            perror("select");
             exit(1);
         }
+        if(FD_ISSET(fd,&mainReadfd)){ // send msg to one of the workers to accept the request
+//            printf("there's data on the main socket\n");
+            int workerIndex = rand() % numWorkers;
+            int workerPID = workersPIDs[workerIndex];
+            kill(workerPID,SIGINT);
+            sleep(10);
 
-
-
-        printf("%s ok\n",buffer);
-        close(newfd);
+        }
     }
 
+
+
+
+
+
+
+
+
+
+
+
+
+//    }
+
 }
+
+
+int open_MQ(key_t key){
+
+    return msgget(key,0666|IPC_CREAT);
+}
+int send_msg_MQ(int qid, struct msgbuf *msgp){
+    int sz;
+    sz= sizeof(msgp)-sizeof(long);
+    return msgsnd(qid,msgp,sz,0);
+}
+
+int receive_msg_MQ(int qid, struct msgbuf *msgp,int type){
+    int sz;
+    sz= sizeof(msgp)-sizeof(long);
+
+    return msgrcv(qid,msgp,sz,type,0);
+}
+
+void remove_MQ(int qid){
+    msgctl(qid,IPC_RMID,NULL);
+}
+
+
+void handler(int signum) {
+    signal (SIGINT, handler);
+    printf("Signal handled\n");
+    struct sockaddr_in cli;
+    int cli_len = sizeof(cli);
+    int newfd; /* returned by accept() */
+    int nbytes;
+    char buffer[512];
+    int next = 0;
+    int newfds[100];
+    while(1){
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        printf("before for\n");
+/* Now use FD_SET to initialize other newfd’s that have already been returned by accept() */
+        for(int i=0;i<100;i++){
+            FD_SET(newfds[i],&readfds);
+            printf("%d\n",i);
+        }
+        printf("after for\n");
+
+        select(  100, &readfds, 0, 0, 0);
+
+        if ((newfds[ next++ ] = accept(fd, (struct sockaddr *) &cli, &cli_len)) < 0) {
+            perror("accept");
+            exit(1);
+        }
+        printf("ok\n");
+
+
+        for(int i=0;i<100;i++) {
+            if (FD_ISSET(newfds[i], &readfds)) {
+                if ((nbytes = read(newfds[i], buffer, sizeof(buffer))) < 0) {
+                    perror("read error");
+                    exit(1);
+                }
+                printf("%s ok\n", buffer);
+                close(newfds[i]);
+
+            }
+        }
+    }
+}
+
+
 
 
