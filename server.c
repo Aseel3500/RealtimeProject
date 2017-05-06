@@ -1,7 +1,6 @@
-
 #include "conf.h"
 #define KEY 500
-void (*  old_handler)(int);
+void (* old_handler)(int);
 void handler(int signum);
 int fd = 0;
 
@@ -60,7 +59,7 @@ int main() {
         if(!pid){//child
             old_handler = signal (SIGINT, handler);
 //            printf("request Accepted by child %d\n",getpid());
-            while(1);
+           while(1);
 
 
 
@@ -142,9 +141,11 @@ int main() {
             int workerIndex = rand() % numWorkers;
             int workerPID = workersPIDs[workerIndex];
             kill(workerPID,SIGINT);
-            sleep(10);
+           //sleep(1000);
 
         }
+       //break;
+        
     }
 
 
@@ -195,38 +196,73 @@ void handler(int signum) {
     int nbytes;
     char buffer[512];
     int next = 0;
-    int newfds[100];
+    int newfds[100], sd;
+    int max_sd;
+    fd_set readfds;
+
+    //strcpy(buffer,"fdset msg from server to client");
+
+     for (int i = 0; i < 100; i++)
+        {
+            newfds[i] = 0;
+        }
     while(1){
-        fd_set readfds;
         FD_ZERO(&readfds);
+
+        FD_SET(fd,&readfds);
+        max_sd = fd; 
         printf("before for\n");
 /* Now use FD_SET to initialize other newfd’s that have already been returned by accept() */
         for(int i=0;i<100;i++){
-            FD_SET(newfds[i],&readfds);
-            printf("%d\n",i);
+            sd =  newfds[i] ;
+            FD_SET(sd,&readfds);
+           // if(sd > max_sd)
+             //  max_sd = sd;
+            //printf("%d\n",i);
         }
-        printf("after for\n");
+          max_sd = 100;
+        //printf("after for\n");
+       // printf("max sd %d\n", max_sd);
+        select(max_sd+1, &readfds, NULL, NULL, NULL);
+         //printf("after select\n");
 
-        select(  100, &readfds, 0, 0, 0);
-
-        if ((newfds[ next++ ] = accept(fd, (struct sockaddr *) &cli, &cli_len)) < 0) {
-            perror("accept");
-            exit(1);
-        }
-        printf("ok\n");
+       if(FD_ISSET(fd, &readfds)) {
+           if ((newfds[next++] = accept(fd, (struct sockaddr *) &cli, &cli_len)) < 0) {
+               perror("accept");
+               exit(1);
+           } else {
 
 
-        for(int i=0;i<100;i++) {
-            if (FD_ISSET(newfds[i], &readfds)) {
-                if ((nbytes = read(newfds[i], buffer, sizeof(buffer))) < 0) {
-                    perror("read error");
-                    exit(1);
-                }
-                printf("%s ok\n", buffer);
-                close(newfds[i]);
+               nbytes = read(newfds[next - 1], &buffer, sizeof(buffer));
+               printf("%s buffer value from client\n", buffer);
+               printf("%d next value\n", next);
+               if (write(newfds[next-1], &buffer, strlen(buffer) < 0)) {
+                   perror("write");
+                   exit(1);
+               }
+           }
 
-            }
-        }
+       }
+
+
+           for (int i = 0; i < 100; i++) {
+               if (FD_ISSET(newfds[i], &readfds)) {
+                   if ((nbytes = read(newfds[i], &buffer, sizeof(buffer))) < 0) {
+                       perror("read error");
+                       exit(1);
+                   } else {
+                       write(newfds[i], &buffer, strlen(buffer) < 0); 
+                       printf("%s buffer value\n", buffer);
+                       newfds[i] = 0;
+                       close(newfds[i]);
+                   }
+               }
+           }
+
+           if (next == 99) {
+               next = 0;
+           }
+
     }
 }
 

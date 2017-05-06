@@ -5,7 +5,7 @@ void main(int argc, char *argv[]){
 
     int fd,nbytes;
     struct sockaddr_in srv;
-    char buffer[50];
+    char buffer[512];
 
 
     if(argc<2){
@@ -35,6 +35,14 @@ void main(int argc, char *argv[]){
 
         perror("write error");
         exit(1);
+    }
+
+    if ((nbytes = read(fd, &buffer, sizeof(buffer))) < 0) {
+        perror("read error");
+        exit(1);
+    } else{
+        printf("%s buffer value from server\n", buffer);
+        close(fd);
     }
 
 
