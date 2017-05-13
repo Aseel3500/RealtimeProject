@@ -40,30 +40,34 @@ void main(int argc, char *argv[]){
         perror("write error");
         exit(1);
     }
-//    char readBuffer[512];
-//    while(1){
-//        if((nbytes = read(fd, &readBuffer, sizeof(readBuffer))) < 0){
-//            perror("read error");
-//        }
-//        printf("-%s-\n",readBuffer);
+    char readBuffer[512];
+    while(1){
+        if((nbytes = read(fd, &readBuffer, sizeof(readBuffer))) < 0){
+            perror("read error");
+        }
+        printf("%s\n",readBuffer);
+        if (strchr(readBuffer, '*') != NULL)
+        {
+            break;
+        }
 //        char tmp[512];
 //        strcpy(tmp,"*");
 //        if(strcmp(tmp,readBuffer) == 0) {
 //            break;
 //        }
-//    }
-//    close(fd);
-
-
-    char readBuffer[512];
-
-    if ((nbytes = read(fd, &readBuffer, sizeof(readBuffer))) < 0) {
-        perror("read error");
-        exit(1);
-    } else{
-        printf("%s buffer value from server\n", readBuffer);
-        close(fd);
     }
+    close(fd);
+
+//
+//    char readBuffer[512];
+//
+//    if ((nbytes = read(fd, &readBuffer, sizeof(readBuffer))) < 0) {
+//        perror("read error");
+//        exit(1);
+//    } else{
+//        printf("%s buffer value from server\n", readBuffer);
+//        close(fd);
+//    }
 
 
 

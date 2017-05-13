@@ -286,7 +286,7 @@ void handler() {
                    perror("error in openning file\n");
                }
                while(fgets(line, sizeof(line), fp) != NULL){
-                   printf("%s",line);
+                   //printf("%s",line);
                    strcpy(buffer,line);
                    if (write(newfds[next-1], &buffer, strlen(buffer))< 0) {
                        perror("write");
@@ -295,7 +295,7 @@ void handler() {
                }
 
                strcpy(buffer,"*");
-//               buffer[2] = '\0';
+              // buffer[2] = '\0';
                write(newfds[next-1], &buffer, strlen(buffer));
 
 
