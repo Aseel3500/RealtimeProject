@@ -1,7 +1,10 @@
 #include "conf.h"
 #define KEY 500
-void (* old_handler)(int);
-void handler(int signum);
+
+void sendMessage(int workerPID,int qid);
+void handler();
+
+
 int fd = 0;
 
 int main() {
@@ -57,9 +60,10 @@ int main() {
 
 
         if(!pid){//child
-            old_handler = signal (SIGINT, handler);
+//            old_handler = signal (SIGINT, handler);
+            handler();
 //            printf("request Accepted by child %d\n",getpid());
-           while(1);
+//           while(1);
 
 
 
@@ -127,24 +131,27 @@ int main() {
 
 
     /*check if there's data to read from the general socket*/
+    int m=0;
     while(1){
 
         fd_set mainReadfd;
         FD_ZERO(&mainReadfd);
         FD_SET(fd,&mainReadfd);
-        if(select(fd+1,&mainReadfd,0,0,0)<0){
+        if(select(fd+1,&mainReadfd,NULL,NULL,NULL)<0){
             perror("select");
             exit(1);
         }
+//        printf("%d\n",m++);
         if(FD_ISSET(fd,&mainReadfd)){ // send msg to one of the workers to accept the request
 //            printf("there's data on the main socket\n");
             int workerIndex = rand() % numWorkers;
             int workerPID = workersPIDs[workerIndex];
-            kill(workerPID,SIGINT);
-           //sleep(1000);
-
+            //kill(workerPID,SIGINT);
+            int qid = msgget(KEY,0666|IPC_CREAT);
+            sendMessage(workerPID,qid);
+            sleep(1);
         }
-       //break;
+
         
     }
 
@@ -162,6 +169,22 @@ int main() {
 
 //    }
 
+}
+void sendMessage(int workerPID,int qid){
+    struct msgbuf p;
+
+//    printf("qid parent %d\n",qid);
+    strcpy(p.a,"ahln");
+    printf("we send message to child %d\n",workerPID);
+    p.type = workerPID;
+    p.pid = getpid();
+
+    if(msgsnd(qid,&p,sizeof(p)-sizeof(long),0)<0)
+    {
+        perror("error in sending to MQ");
+        exit(1);
+    }
+//    printf("message is sent to worker\n");
 }
 
 
@@ -187,9 +210,9 @@ void remove_MQ(int qid){
 }
 
 
-void handler(int signum) {
-    signal (SIGINT, handler);
-    printf("Signal handled\n");
+void handler() {
+//    signal (SIGINT, handler);
+//    printf("Signal handled\n");
     struct sockaddr_in cli;
     int cli_len = sizeof(cli);
     int newfd; /* returned by accept() */
@@ -199,65 +222,109 @@ void handler(int signum) {
     int newfds[100], sd;
     int max_sd;
     fd_set readfds;
+    struct msgbuf received_msg;
 
     //strcpy(buffer,"fdset msg from server to client");
+
+
 
      for (int i = 0; i < 100; i++)
         {
             newfds[i] = 0;
         }
+//    printf("child %d\n",getpid());
     while(1){
-        FD_ZERO(&readfds);
+        int qid = msgget(KEY,0666|IPC_CREAT);
+//        printf("before receive\n");
+        if(msgrcv(qid,&received_msg,0,getpid(),0)<0)
+//            printf("there's msg\n");
+        if(msgrcv(qid,&received_msg,sizeof(received_msg)-sizeof(long),getpid(),0)<0){
+            perror("error in receiving MQ");
+            exit(1);
+        }
 
+//        printf("the message is %s in child %d\n",received_msg.a, getpid());
+
+        FD_ZERO(&readfds);
         FD_SET(fd,&readfds);
-        max_sd = fd; 
-        printf("before for\n");
+        max_sd = fd;
+//        printf("before for\n");
 /* Now use FD_SET to initialize other newfd’s that have already been returned by accept() */
         for(int i=0;i<100;i++){
             sd =  newfds[i] ;
-            FD_SET(sd,&readfds);
-           // if(sd > max_sd)
-             //  max_sd = sd;
-            //printf("%d\n",i);
+            FD_SET(newfds[i] ,&readfds);
+            if(newfds[i] > max_sd)
+            {
+                max_sd = newfds[i];
+            }
         }
-          max_sd = 100;
-        //printf("after for\n");
+       /// max_sd = 100;
+//        printf("after for\n");
        // printf("max sd %d\n", max_sd);
         select(max_sd+1, &readfds, NULL, NULL, NULL);
-         //printf("after select\n");
 
-       if(FD_ISSET(fd, &readfds)) {
+//       if(FD_ISSET(fd, &readfds)) {
+//           printf("inside the isset of fd\n");
            if ((newfds[next++] = accept(fd, (struct sockaddr *) &cli, &cli_len)) < 0) {
                perror("accept");
                exit(1);
-           } else {
+           }
+           else {
+//               printf("new fd of acceptance %d\n",newfds[next-1]);
 
 
                nbytes = read(newfds[next - 1], &buffer, sizeof(buffer));
                printf("%s buffer value from client\n", buffer);
-               printf("%d next value\n", next);
-               if (write(newfds[next-1], &buffer, strlen(buffer) < 0)) {
-                   perror("write");
-                   exit(1);
+//               printf("%d next value\n", next);
+//               snprintf(buffer, sizeof(buffer), "%d", getpid());
+
+               /*Open the requested file and send it to the client*/
+               FILE* fp;
+               fp=fopen(buffer,"r");
+               char line[512];
+               if(fp<0){
+                   perror("error in openning file\n");
                }
-           }
-
-       }
-
-
-           for (int i = 0; i < 100; i++) {
-               if (FD_ISSET(newfds[i], &readfds)) {
-                   if ((nbytes = read(newfds[i], &buffer, sizeof(buffer))) < 0) {
-                       perror("read error");
+               while(fgets(line, sizeof(line), fp) != NULL){
+                   printf("%s",line);
+                   strcpy(buffer,line);
+                   if (write(newfds[next-1], &buffer, strlen(buffer))< 0) {
+                       perror("write");
                        exit(1);
-                   } else {
-                       write(newfds[i], &buffer, strlen(buffer) < 0); 
-                       printf("%s buffer value\n", buffer);
-                       newfds[i] = 0;
-                       close(newfds[i]);
                    }
                }
-           }
+
+               strcpy(buffer,"*");
+//               buffer[2] = '\0';
+               write(newfds[next-1], &buffer, strlen(buffer));
+
+
+//               if (write(newfds[next-1], &buffer, strlen(buffer) < 0)) {
+//                   perror("write");
+//                   exit(1);
+//               }
+
+               printf("Response is sent from worker %d\n",getpid());
+               close(newfds[next-1]);
+
+            }
+
+//            printf("wow\n");
+//           for (int i = 0; i < 100; i++) {
+//               if (FD_ISSET(newfds[i], &readfds)) {
+//                   printf("%s buffer value from client\n", buffer);
+//                   if ((nbytes = read(newfds[i], &buffer, sizeof(buffer))) < 0) {
+//                       perror("read error");
+//                       exit(1);
+//                   } else {
+//                       write(newfds[i], &buffer, strlen(buffer) < 0);
+//                       printf("%s buffer value\n", buffer);
+//                       newfds[i] = 0;
+//                    printf("Response is sent from worker %d\n",getpid());
+//                       close(newfds[i]);
+//                   }
+//               }
+//           }
 
            if (next == 99) {
                next = 0;

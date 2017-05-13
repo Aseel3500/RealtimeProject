@@ -6,14 +6,17 @@ void main(int argc, char *argv[]){
     int fd,nbytes;
     struct sockaddr_in srv;
     char buffer[512];
+    printf(">>");
+    scanf("%s",buffer);
 
 
-    if(argc<2){
-        perror("No parameters passed!");
-        exit(2);
-    }
+//    if(argc<2){
+//        perror("No parameters passed!");
+//        exit(2);
+//    }
+
 //    "/folderName/fileName"
-    strcpy(buffer,argv[1]);
+//    strcpy(buffer,argv[1]);
 
     if((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         perror("socket");
@@ -29,6 +32,7 @@ void main(int argc, char *argv[]){
         perror("connect");
         exit(1);
     }
+    //sleep(3);
 
 
     if((nbytes = write(fd, &buffer, sizeof(buffer))) < 0) {
@@ -36,12 +40,28 @@ void main(int argc, char *argv[]){
         perror("write error");
         exit(1);
     }
+//    char readBuffer[512];
+//    while(1){
+//        if((nbytes = read(fd, &readBuffer, sizeof(readBuffer))) < 0){
+//            perror("read error");
+//        }
+//        printf("-%s-\n",readBuffer);
+//        char tmp[512];
+//        strcpy(tmp,"*");
+//        if(strcmp(tmp,readBuffer) == 0) {
+//            break;
+//        }
+//    }
+//    close(fd);
 
-    if ((nbytes = read(fd, &buffer, sizeof(buffer))) < 0) {
+
+    char readBuffer[512];
+
+    if ((nbytes = read(fd, &readBuffer, sizeof(readBuffer))) < 0) {
         perror("read error");
         exit(1);
     } else{
-        printf("%s buffer value from server\n", buffer);
+        printf("%s buffer value from server\n", readBuffer);
         close(fd);
     }
 
