@@ -16,6 +16,12 @@
 #include <netdb.h>
 #include <sys/stat.h>
 #include <signal.h>
+#include <sys/shm.h>
+#include <sys/ipc.h>
+#include <sys/types.h>
+#include <sys/sem.h>
+#define BUFFER "./buffer"
+
 
 //#define SERVER_PORT 80
 static char buf[BUFSIZ];
@@ -30,3 +36,6 @@ struct msgbuf
     char a[1024];
     int pid;
 }p;
+
+//struct sembuf acquire = {0, -1, SEM_UNDO},
+//        release = {0, 1, SEM_UNDO};

@@ -1,14 +1,14 @@
 #include "conf.h"
 #define KEY 500
-
+#define SHMSZ 2
 void sendMessage(int workerPID,int qid);
 void handler();
 
 
 int fd = 0;
-
+int numConnections = 0;
 int main() {
-    int numWorkers,numConnections,portNumber;
+    int numWorkers,portNumber;
 
     struct sockaddr_in srv;
 //    struct sockaddr_in cli;
@@ -29,6 +29,7 @@ int main() {
     numConnections = fileData[1];
     portNumber = fileData[2];
     int *workersPIDs = (int *)malloc(numWorkers*sizeof(int));
+    int *shmIds = (int *)malloc(numWorkers*sizeof(int));
 
     /*socket creation*/
 
@@ -104,29 +105,29 @@ int main() {
 //    }
     printf("after forking \n");
 
-    /*MQ*/
 
 
-//    int qid = open_MQ(KEY);
-//    printf("qid parent %d\n",qid);
-//    struct msgbuf p;
-//    strcpy(p.a,"ahln");
-//    int workerIndex = rand() % 10;
-//    long workerPID = workersPIDs[workerIndex];
-//    printf("we send message to child %ld\n",workerPID);
-//    p.type = workerPID;
-//    p.pid = getpid();
+    /*Shared memory creation for each worker*/
+    for(int l =0 ;l<numWorkers;l++){
+        int key = workersPIDs[l];
 
-//    send_msg_MQ(qid,&p);
-//    if(msgsnd(qid,&p,sizeof(p)-sizeof(long),0)<0)
-//    {
-//        perror("error in sending to MQ");
-//        exit(1);
-//    }
-//    printf("message is sent to worker\n");
+        if ((shmIds[l]= shmget(key, SHMSZ, IPC_CREAT | 0666)) < 0) {
+            perror("shmget");
+            exit(1);
+        }
+        int *shm_base_address;
 
+        /* * Now we attach the segment to our data space. */
+        if((shm_base_address =(int *)shmat(shmIds[l],NULL,0)) == (char *) -1) {
+            perror("shmat");
+            exit(1);
+        }
+        *shm_base_address = numConnections;
+//        printf("shm %d\n",*shm_base_adderess);
+    }
 
-    /* socket descriptor */
+    /*semaphores creation*/
+
 
 
 
@@ -145,6 +146,8 @@ int main() {
         if(FD_ISSET(fd,&mainReadfd)){ // send msg to one of the workers to accept the request
 //            printf("there's data on the main socket\n");
             int workerIndex = rand() % numWorkers;
+//            workerIndex = 0;
+
             int workerPID = workersPIDs[workerIndex];
             //kill(workerPID,SIGINT);
             int qid = msgget(KEY,0666|IPC_CREAT);
@@ -219,16 +222,35 @@ void handler() {
     int nbytes;
     char buffer[512];
     int next = 0;
-    int newfds[100], sd;
+    int  sd;
     int max_sd;
     fd_set readfds;
     struct msgbuf received_msg;
+    int *shm_base_address;
+    int shmId, semid;
+//    int newfds[100];
+    int *newfds =(int *)malloc(sizeof(int)* numConnections);
+    static struct sembuf acquire = {0, -1, SEM_UNDO},
+            release = {0, 1, SEM_UNDO};
+//    acquire.sem_num = 0;
+//    release.sem_num = 0;
+//    struct sembuf sbuf;
 
-    //strcpy(buffer,"fdset msg from server to client");
+    /*shm creation and attaching*/
+    if ((shmId= shmget(getpid(), SHMSZ, IPC_CREAT | 0666)) < 0) {
+        perror("shmget");
+        exit(1);
+    }
+
+    if((shm_base_address =(int *)shmat(shmId,NULL,0)) == (char *) -1) {
+        perror("shmat");
+        exit(1);
+    }
 
 
 
-     for (int i = 0; i < 100; i++)
+
+     for (int i = 0; i < numConnections; i++)
         {
             newfds[i] = 0;
         }
@@ -237,11 +259,12 @@ void handler() {
         int qid = msgget(KEY,0666|IPC_CREAT);
 //        printf("before receive\n");
         if(msgrcv(qid,&received_msg,0,getpid(),0)<0)
-//            printf("there's msg\n");
+            printf("there's msg\n");
         if(msgrcv(qid,&received_msg,sizeof(received_msg)-sizeof(long),getpid(),0)<0){
             perror("error in receiving MQ");
             exit(1);
         }
+
 
 //        printf("the message is %s in child %d\n",received_msg.a, getpid());
 
@@ -250,7 +273,7 @@ void handler() {
         max_sd = fd;
 //        printf("before for\n");
 /* Now use FD_SET to initialize other newfd’s that have already been returned by accept() */
-        for(int i=0;i<100;i++){
+        for(int i=0;i<numConnections;i++){
             sd =  newfds[i] ;
             FD_SET(newfds[i] ,&readfds);
             if(newfds[i] > max_sd)
@@ -270,6 +293,38 @@ void handler() {
                exit(1);
            }
            else {
+               /*semaphore access*/
+               if ( (semid = semget(getpid(), 1, IPC_CREAT | 0666)) < 0 ) {
+                   perror("semaphore get");
+                   exit(1);
+               }
+
+               else{
+                   printf(" smid %d\n", semid);
+                   semctl(semid, 0, SETVAL, 1);
+                   /* Initialize the semaphore. */
+                   //sbuf.sem_num = 1;
+               }
+
+               printf("before acquire \n");
+               /* acquire shared memory */
+               if(semop(semid, &acquire, 1) < 0 ) {
+                   perror("sem");
+                   exit(1);
+               }
+               else
+               {
+                   printf("acquire done\n");
+               }
+               /*Access the shared memory to decrement the number of connection of the worker*/
+               /* Now we attach the segment to our data space. */
+               *shm_base_address = --(*shm_base_address);
+               if ( semop(semid, &release, 1) <  0) {
+                   perror("semop");
+                   exit(1);
+               }
+               printf("shm after accept %d\n",*shm_base_address);
+
 //               printf("new fd of acceptance %d\n",newfds[next-1]);
 
 
@@ -286,7 +341,7 @@ void handler() {
                    perror("error in openning file\n");
                }
                while(fgets(line, sizeof(line), fp) != NULL){
-                   //printf("%s",line);
+                   printf("%s",line);
                    strcpy(buffer,line);
                    if (write(newfds[next-1], &buffer, strlen(buffer))< 0) {
                        perror("write");
@@ -295,7 +350,7 @@ void handler() {
                }
 
                strcpy(buffer,"*");
-              // buffer[2] = '\0';
+               buffer[2] = '\0';
                write(newfds[next-1], &buffer, strlen(buffer));
 
 
@@ -305,9 +360,13 @@ void handler() {
 //               }
 
                printf("Response is sent from worker %d\n",getpid());
+
+               *shm_base_address = ++(*shm_base_address);
+               printf("shm after response %d\n",*shm_base_address);
                close(newfds[next-1]);
 
             }
+
 
 //            printf("wow\n");
 //           for (int i = 0; i < 100; i++) {

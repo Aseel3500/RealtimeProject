@@ -7,7 +7,7 @@ void main(int argc, char *argv[]){
     struct sockaddr_in srv;
     char buffer[512];
     printf(">>");
-    scanf("%s",buffer);
+//    scanf("%s",buffer);
 
 
 //    if(argc<2){
@@ -32,6 +32,8 @@ void main(int argc, char *argv[]){
         perror("connect");
         exit(1);
     }
+    scanf("%s",buffer);
+
     //sleep(3);
 
 
